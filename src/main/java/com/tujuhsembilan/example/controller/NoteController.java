@@ -6,6 +6,8 @@ import java.util.stream.Collectors;
 import org.modelmapper.ModelMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -27,21 +29,32 @@ public class NoteController {
 
   private final ModelMapper mdlMap;
 
+  private boolean isAdmin(Authentication authentication) {
+    return authentication.getAuthorities().stream()
+        .map(GrantedAuthority::getAuthority)
+        .anyMatch(role -> role.equals("ADMIN") || role.equals("SYSTEM"));
+  }
+
   @GetMapping
-  public ResponseEntity<?> getNotes(Principal principal) {
-    String currentUsername = principal.getName();
+  public ResponseEntity<?> getNotes(Principal principal, Authentication authentication) {
+    if (isAdmin(authentication)) {
+      return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Admins are not allowed to access.");
+    }
+    String username = principal.getName();
     return ResponseEntity
-        .ok(repo.findByUsername(currentUsername)
+        .ok(repo.findByUsername(username)
             .stream()
             .map(o -> mdlMap.map(o, NoteDto.class))
             .collect(Collectors.toSet()));
   }
 
   @PostMapping
-  public ResponseEntity<?> saveNote(@RequestBody NoteDto body, Principal principal) {
-    String currentUsername = principal.getName();
+  public ResponseEntity<?> saveNote(@RequestBody NoteDto body, Principal principal, Authentication authentication) {
+    if (isAdmin(authentication)) {
+      return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Admins are not allowed to access.");
+    }
     var newNote = mdlMap.map(body, Note.class);
-    newNote.setUsername(currentUsername);
+    newNote.setUsername(principal.getName());
     newNote = repo.save(newNote);
     return ResponseEntity.status(HttpStatus.CREATED).body(newNote);
   }
